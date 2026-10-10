@@ -77,6 +77,9 @@ h2{font-size:1.1rem;font-weight:800;margin-block:22px 10px}
 .opts input[type=checkbox]{width:26px;height:26px;accent-color:var(--accent)}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .grow{flex:1;min-width:0}
+.today{margin-top:14px;padding:10px 12px;border:2px solid var(--line);border-radius:14px;background:var(--accent-soft);display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.sync label{display:block;font-weight:700;margin-top:10px;font-size:.9rem}.sync input{width:100%;min-height:48px;border:2px solid var(--line);border-radius:12px;padding:8px 12px;font:inherit;background:var(--bg);color:var(--ink)}.sync summary{min-height:44px;display:flex;align-items:center;cursor:pointer}
+.statsbox{width:100%;margin-top:8px;border:2px solid var(--line);border-radius:12px;padding:10px;font:13px/1.4 ui-monospace,Menlo,monospace;background:var(--surface);color:var(--ink)}
 .top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:10px 8px;display:flex;flex-direction:column;gap:8px}
 .bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden}
 .bar>i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .25s}
@@ -122,6 +125,7 @@ const KINDS = {knowledge:"Knowledge",person:"Person",term:"Key term",effect:"Eff
 const BADGE = {knowledge:"KNOWLEDGE",person:"PERSON",term:"KEY TERM",effect:"EFFECT ON TENSION",impact:"IMPACT CHAIN",judgement:"JUDGEMENT",depends:"IT DEPENDS",confuse:"DON'T CONFUSE",timeline:"TIMELINE",context:"CONTEXT",formula:"FORMULA",calc:"WORKED CALCULATION",provenance:"PROVENANCE",dates:"KEY DATES & FIGURES",proscons:"ADVANTAGES / DISADVANTAGES",structure:"EXAM STRUCTURE",practical:"CORE PRACTICAL"};
 const app = document.getElementById("app"), live = document.getElementById("live");
 const BYID = {}; DATA.cards.forEach(c => BYID[c.id] = c);
+let LOG = [];   // [timestamp ms, card id, 1 = got it / 0 = missed] kept on this phone
 let S = {view:"home", path:[], kind:"", queue:[], i:0, shown:false, hint:false, missed:[], got:0, title:"", shuffle:true, fs:1, tricky:new Set()};
 
 /* ---- the deck tree, same shape as Anki ---- */
@@ -134,7 +138,8 @@ DATA.mocks.forEach(m => { MOCKN.kids.set(m.name,{name:m.name,kids:new Map(),ids:
 ROOT.kids.set("Mocks", MOCKN);
 function nodeAt(path){ let n=ROOT; for(const p of path){ n=n.kids.get(p); if(!n) return ROOT; } return n; }
 
-function load(){ try{const o=JSON.parse(localStorage.getItem("pd")||"{}"); if(o.shuffle!==undefined)S.shuffle=o.shuffle; if(o.fs)S.fs=o.fs; if(o.tricky)S.tricky=new Set(o.tricky);}catch(e){} setFs(); }
+function load(){ try{LOG=JSON.parse(localStorage.getItem("pdlog")||"[]");}catch(e){LOG=[];} try{const o=JSON.parse(localStorage.getItem("pd")||"{}"); if(o.shuffle!==undefined)S.shuffle=o.shuffle; if(o.fs)S.fs=o.fs; if(o.tricky)S.tricky=new Set(o.tricky);}catch(e){} setFs(); }
+function saveLog(){ try{ if(LOG.length>8000) LOG=LOG.slice(-8000); localStorage.setItem("pdlog",JSON.stringify(LOG)); }catch(e){} }
 function save(){ try{localStorage.setItem("pd",JSON.stringify({shuffle:S.shuffle,fs:S.fs,tricky:[...S.tricky]}));}catch(e){} }
 function setFs(){ document.documentElement.style.setProperty("--fs",S.fs); }
 function esc(t){ return String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
@@ -144,6 +149,72 @@ function pic(h,cap,cls){ return h?'<div class="img'+(cls?" "+cls:"")+'">'+imgs(h
 function clozeHtml(c,reveal){
   return c.cloze.replace(/\{\{c(\d+)::(.*?)(?:::(.*?))?\}\}/g,(m,n,a,h)=> +n===c.n ? '<span class="cloze">'+(reveal?a:'['+(h?esc(h):"...")+']')+'</span>' : a);
 }
+
+/* ---- study stats (kept on the phone; "Copy for Claude" turns them into text he can paste into the chat) ---- */
+function dayKey(ts){ const d=new Date(ts-4*3600*1000); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function minutesOf(entries){ let ms=0; for(let i=0;i<entries.length;i++){ const gap=i? entries[i][0]-entries[i-1][0] : 20000; ms+=Math.min(gap,60000); } return ms/60000; }
+function plain(c){ return String(c.cloze!==undefined?c.cloze.replace(/\{\{c\d+::(.*?)(?:::.*?)?\}\}/g,"$1"):c.front).replace(/<[^>]*>/g,"").replace(/&[a-z#0-9]+;/gi," ").slice(0,70); }
+function statsFor(entries){
+  const n=entries.length, right=entries.filter(e=>e[2]).length;
+  return {n, pct:n?Math.round(100*right/n):0, min:Math.round(minutesOf(entries))};
+}
+function statsText(){
+  const today=dayKey(Date.now()), byDay={};
+  LOG.forEach(e=>{ (byDay[dayKey(e[0])]=byDay[dayKey(e[0])]||[]).push(e); });
+  const out=["Pocket Drills stats, generated "+new Date().toISOString().slice(0,16).replace("T"," ")];
+  const t=statsFor(byDay[today]||[]);
+  out.push("Today: "+t.n+" cards, "+t.pct+"% got it, about "+t.min+" min");
+  out.push("Last 7 days:");
+  for(let k=6;k>=0;k--){ const d=dayKey(Date.now()-k*86400000), s=statsFor(byDay[d]||[]); out.push("  "+d+": "+s.n+" cards"+(s.n?", "+s.pct+"% got it, about "+s.min+" min":"")); }
+  const week=LOG.filter(e=>Date.now()-e[0]<7*86400000), subj={}, topic={}, miss={};
+  week.forEach(e=>{ const c=BYID[e[1]]; if(!c) return; const s=c.home[0]; (subj[s]=subj[s]||[]).push(e); const tp=c.home.slice(0,3).join(" / "); (topic[tp]=topic[tp]||[]).push(e); if(!e[2]) miss[e[1]]=(miss[e[1]]||0)+1; });
+  out.push("By subject (last 7 days):");
+  Object.keys(subj).sort((a,b)=>subj[b].length-subj[a].length).forEach(k=>{ const s=statsFor(subj[k]); out.push("  "+k+": "+s.n+" cards, "+s.pct+"% got it, about "+s.min+" min"); });
+  const weak=Object.keys(topic).filter(k=>topic[k].length>=8).map(k=>[statsFor(topic[k]),k]).sort((a,b)=>a[0].pct-b[0].pct).slice(0,6);
+  if(weak.length){ out.push("Weakest topics (8+ cards, last 7 days):"); weak.forEach(w=>out.push("  "+w[1]+": "+w[0].pct+"% over "+w[0].n)); }
+  const hard=Object.keys(miss).sort((a,b)=>miss[b]-miss[a]).slice(0,8);
+  if(hard.length){ out.push("Missed most:"); hard.forEach(id=>out.push("  "+miss[id]+"x "+plain(BYID[id]))); }
+  out.push("Tricky pile: "+[...S.tricky].filter(id=>BYID[id]).length+" cards");
+  return out.join("\n");
+}
+function copyStats(){
+  const txt=statsText();
+  const done=()=>{ S.copied=true; render(); setTimeout(()=>{S.copied=false; if(S.view==="home") render();},2500); };
+  try{ navigator.clipboard.writeText(txt).then(done,()=>{ window.prompt&&0; S.statsShown=txt; render(); }); }catch(e){ S.statsShown=txt; render(); }
+}
+
+/* ---- auto-send stats to a private GitHub repo (only in the installed home-screen app) ----
+   Writes logs/YYYY-MM-DD.json and state/tricky.json through the GitHub contents API using a fine-grained token that only
+   works on that one repo. Claude reads the repo, so nothing needs pasting. Works whenever the phone is online. */
+let SYNC={repo:"ethangrey13-maker/drills-data",token:"",last:0,msg:"",busy:false};
+function loadSync(){ try{ Object.assign(SYNC, JSON.parse(localStorage.getItem("pdsync")||"{}")); }catch(e){} SYNC.busy=false; }
+function saveSync(){ try{ localStorage.setItem("pdsync",JSON.stringify({repo:SYNC.repo,token:SYNC.token,last:SYNC.last})); }catch(e){} }
+const b64=t=>btoa(unescape(encodeURIComponent(t))), unb64=t=>decodeURIComponent(escape(atob(t.replace(/\n/g,""))));
+function ghApi(path,method,body){ return fetch("https://api.github.com/repos/"+SYNC.repo+"/contents/"+path,{method:method||"GET",headers:{"Authorization":"Bearer "+SYNC.token,"Accept":"application/vnd.github+json"},body:body?JSON.stringify(body):undefined}); }
+async function putJson(path,obj,mergeFn){
+  let sha, cur; const g=await ghApi(path);
+  if(g.status===200){ const j=await g.json(); sha=j.sha; cur=JSON.parse(unb64(j.content)); } else if(g.status!==404) throw new Error("read "+g.status);
+  const merged=mergeFn?mergeFn(cur,obj):obj;
+  const r=await ghApi(path,"PUT",{message:"drills "+path,content:b64(JSON.stringify(merged)),sha});
+  if(!r.ok) throw new Error("write "+r.status);
+}
+async function syncNow(quiet){
+  if(SYNC.busy) return;
+  if(!SYNC.repo||!SYNC.token){ if(!quiet){SYNC.msg="Add a token first."; render();} return; }
+  if(!navigator.onLine){ if(!quiet){SYNC.msg="Offline. It will send when you're back online."; render();} return; }
+  const pending=LOG.filter(e=>e[0]>SYNC.last);
+  if(!pending.length && quiet) return;
+  SYNC.busy=true; if(!quiet){SYNC.msg="Sending…"; render();}
+  try{
+    const days={}; pending.forEach(e=>{ const d=dayKey(e[0]); (days[d]=days[d]||[]).push(e); });
+    for(const d of Object.keys(days)) await putJson("logs/"+d+".json",days[d],(cur,add)=>{ const seen=new Set((cur||[]).map(e=>e[0]+"-"+e[1])); return (cur||[]).concat(add.filter(e=>!seen.has(e[0]+"-"+e[1]))); });
+    await putJson("state/tricky.json",{updated:Date.now(),ids:[...S.tricky]});
+    if(pending.length) SYNC.last=Math.max.apply(null,pending.map(e=>e[0]));
+    saveSync(); SYNC.msg="Sent "+pending.length+" new answers at "+new Date().toTimeString().slice(0,5)+".";
+  }catch(e){ SYNC.msg="Send failed ("+e.message+"). It will retry."; }
+  SYNC.busy=false; if(S.view==="home") render();
+}
+window.addEventListener("online",()=>syncNow(true));
 function say(t){ live.textContent=""; setTimeout(()=>live.textContent=t,30); }
 function filt(ids){ return ids.filter(id=>!S.kind||BYID[id].type===S.kind); }
 
@@ -157,6 +228,7 @@ function homeView(){
   let h = root ? '<h1>Pocket Drills</h1><p class="sub">Your Anki decks, on your phone.</p>'
     : '<div class="row"><button class="btn small" data-act="up" aria-label="Back one level">← Back</button></div><h1 style="margin-top:10px">'+esc(n.name)+'</h1><p class="crumbs">'+esc(S.path.join(" › "))+'</p>';
   const ids=filt(n.ids);
+  if(root){ const ts=statsFor(LOG.filter(e=>dayKey(e[0])===dayKey(Date.now()))); h+='<div class="today"><b>Today</b> '+ts.n+' cards'+(ts.n?' · '+ts.pct+'% got it · about '+ts.min+' min':'')+' <button class="btn small" data-act="copystats">'+(S.copied?'Copied ✓':'Copy stats for Claude')+'</button></div>'+(S.statsShown?'<textarea class="statsbox" readonly rows="8">'+esc(S.statsShown)+'</textarea><p class="sub">Select all and copy, then paste it to Claude.</p>':''); }
   h+='<div class="stack"><button class="btn primary" data-act="drill-here">Drill '+(root?"everything":"this deck")+' · '+ids.length+' cards</button></div>';
   const kinds={}; n.ids.forEach(id=>{const t=BYID[id].type; kinds[t]=(kinds[t]||0)+1;});
   const ks=Object.keys(kinds).sort((a,b)=>kinds[b]-kinds[a]);
@@ -172,6 +244,7 @@ function homeView(){
     }).join("")+'</div>';
   }
   if(root) h+='<div class="opts"><label><input type="checkbox" id="sh" '+(S.shuffle?"checked":"")+'> Shuffle the cards</label><div class="row"><span class="grow"><b>Text size</b></span><button class="btn small" data-act="fs" data-v="-1" aria-label="Smaller text">A−</button><button class="btn small" data-act="fs" data-v="1" aria-label="Bigger text">A+</button></div></div><p class="sub" style="margin-top:18px">Nothing is scheduled and nothing disappears. Drill as often as you like.</p>';
+  if(root && window.__PWA){ h+='<details class="opts sync"'+(SYNC.token?'':' open')+'><summary><b>Auto-send my stats to Claude</b></summary><p class="sub">'+(SYNC.token?'On. ':'Off. ')+esc(SYNC.msg||"")+'</p><label for="sy-repo">Repo (owner/name)</label><input id="sy-repo" value="'+esc(SYNC.repo)+'" autocapitalize="none" autocorrect="off"><label for="sy-token">Token (stays on this phone)</label><input id="sy-token" type="password" placeholder="'+(SYNC.token?'saved, type to replace':'paste token')+'" autocapitalize="none" autocorrect="off"><div class="row" style="margin-top:8px"><button class="btn small" data-act="savesync">Save</button><button class="btn small" data-act="syncnow">Send now</button></div></details>'; }
   return h;
 }
 function studyView(){
@@ -197,8 +270,8 @@ function doneView(){
   return h;
 }
 function render(){ app.innerHTML = S.view==="home"?homeView():S.view==="study"?studyView():doneView(); }
-function next(){ S.i++; S.shown=false; S.hint=false; if(S.i>=S.queue.length){S.view="done"; say("Round done. "+S.got+" of "+S.queue.length+" got it.");} else say("Card "+(S.i+1)+" of "+S.queue.length); render(); window.scrollTo(0,0); }
-function mark(ok){ const c=S.queue[S.i]; if(ok){S.got++; S.tricky.delete(c.id);} else {S.missed.push(c); S.tricky.add(c.id);} save(); next(); }
+function next(){ S.i++; S.shown=false; S.hint=false; if(S.i>=S.queue.length){S.view="done"; if(window.__PWA) syncNow(true); say("Round done. "+S.got+" of "+S.queue.length+" got it.");} else say("Card "+(S.i+1)+" of "+S.queue.length); render(); window.scrollTo(0,0); }
+function mark(ok){ const c=S.queue[S.i]; LOG.push([Date.now(),c.id,ok?1:0]); saveLog(); if(window.__PWA && LOG.length%25===0) syncNow(true); if(ok){S.got++; S.tricky.delete(c.id);} else {S.missed.push(c); S.tricky.add(c.id);} save(); next(); }
 function act(a,v){
   const n=nodeAt(S.path);
   if(a==="drill-here") start(filt(n.ids), S.path.length?S.path.join(" › "):"Everything");
@@ -213,6 +286,9 @@ function act(a,v){
   else if(a==="hint"){ S.hint=true; render(); }
   else if(a==="miss") mark(false);
   else if(a==="got") mark(true);
+  else if(a==="copystats") copyStats();
+  else if(a==="savesync"){ const r=document.getElementById("sy-repo").value.trim(), t=document.getElementById("sy-token").value.trim(); if(r) SYNC.repo=r; if(t) SYNC.token=t; saveSync(); SYNC.msg="Saved."; render(); syncNow(); }
+  else if(a==="syncnow") syncNow();
   else if(a==="redo") start(S.missed.map(c=>c.id),"Missed cards");
   else if(a==="again") start(S.queue.map(c=>c.id),S.title);
 }
@@ -224,7 +300,7 @@ document.addEventListener("keydown",e=>{
   else if(S.shown && (e.key==="1"||e.key==="ArrowLeft")) act("miss");
   else if(S.shown && (e.key==="2"||e.key==="ArrowRight")) act("got");
 });
-load(); render();
+load(); loadSync(); render(); if(window.__PWA) setTimeout(()=>syncNow(true),3000);
 if(window.__PWA && "serviceWorker" in navigator){ try{ navigator.serviceWorker.register("sw.js"); }catch(e){} }
 </script>
 </body></html>
