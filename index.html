@@ -275,17 +275,24 @@ function todayPlan(){
   const d=DATA.daily; if(!d) return null; const i=dayIndex(), pick=g=>{ const lab=g.labels[i%g.labels.length]; return {group:g.group, idx:(DATA.blocks||[]).findIndex(b=>b.label===lab)}; };
   return {morning:d.morning.map(pick).filter(x=>x.idx>=0), night:d.night.map(pick).filter(x=>x.idx>=0)};
 }
-function planCounts(){ const p=todayPlan(); if(!p) return {done:0,total:0}; const all=p.morning.concat(p.night); return {done:all.filter(x=>blockDone(DATA.blocks[x.idx].label)).length,total:all.length}; }
+function isLate(){ return new Date().getHours()>=12; }
+function planCounts(){ const p=todayPlan(); if(!p) return {done:0,total:0,extra:0,late:false}; const all=p.morning.concat(p.night), dn=all.filter(x=>blockDone(DATA.blocks[x.idx].label)).length;
+  if(isLate()) return {done:Math.min(2,dn),total:2,extra:Math.max(0,dn-2),late:true};
+  return {done:dn,total:all.length,extra:0,late:false}; }
 function blockRow(x,mark){ const b=DATA.blocks[x.idx], done=blockDone(b.label), next=mark&&!done;
   return '<div class="deck'+(next?' tricky':'')+'"><button class="main" data-act="preset" data-v="'+x.idx+'"><b>'+(done?'✓ ':(next?'▶ ':''))+esc(b.label)+'</b><span>'+b.ids.length+'</span></button><button class="btn small go" data-act="preset" data-v="'+x.idx+'" aria-label="Start '+esc(b.label)+'">'+(done?'Again':'Start')+'</button></div>'; }
 function todayView(){
   const p=todayPlan(), c=planCounts(), now=new Date(), dn=now.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"});
   let h='<div class="row"><button class="btn small" data-act="home" aria-label="Back to decks">← Decks</button></div><h1 style="margin-top:10px">Today\'s blocks</h1><p class="crumbs">'+esc(dn)+'</p>';
   if(!p){ return h+'<p class="sub">No plan set yet.</p>'; }
-  h+='<div class="today"><b>'+c.done+' of '+c.total+' blocks done</b></div>';
+  h+='<div class="today"><b>'+c.done+' of '+c.total+' blocks done'+(c.late?' tonight':'')+'</b>'+(c.extra?'<span class="sub">+ '+c.extra+' from this morning</span>':'')+'</div>';
   h+='<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="'+c.total+'" aria-valuenow="'+c.done+'" style="margin-top:10px"><i style="width:'+(c.total?100*c.done/c.total:0)+'%"></i></div>';
   let first=true; const rows=(arr)=>arr.map(x=>{ const done=blockDone(DATA.blocks[x.idx].label); const m=!done&&first; if(!done) first=false; return blockRow(x,m); }).join("");
-  h+='<h2>Morning · 2 blocks</h2><div class="list">'+rows(p.morning)+'</div><h2>Night · 2 blocks</h2><div class="list">'+rows(p.night)+'</div>';
+  if(c.late){ const all=p.morning.concat(p.night), dn=all.filter(x=>blockDone(DATA.blocks[x.idx].label)), todo=all.filter(x=>!blockDone(DATA.blocks[x.idx].label)), need=Math.max(0,2-dn.length);
+    if(need) h+='<h2>Tonight · '+need+(need===1?' more block':' blocks')+'</h2><div class="list">'+todo.slice(0,need).map((x,i)=>blockRow(x,i===0)).join("")+'</div>'; else h+='<h2>Tonight\'s target is done 🎉</h2>';
+    if(dn.length) h+='<h2>Done today</h2><div class="list">'+dn.map(x=>blockRow(x,false)).join("")+'</div>';
+    const opt=todo.slice(need); if(opt.length) h+='<h2>Extra, if you have time</h2><div class="list">'+opt.map(x=>blockRow(x,false)).join("")+'</div>'; }
+  else h+='<h2>Morning · '+p.morning.length+' blocks</h2><div class="list">'+rows(p.morning)+'</div><h2>Night · '+p.night.length+' blocks</h2><div class="list">'+rows(p.night)+'</div>';
   h+='<div class="opts" style="margin-top:16px"><label for="bt"><input type="checkbox" id="bt" '+(S.blockTimer?"checked":"")+'> Run the 15-minute timer on each block</label></div>';
   h+='<div class="stack"><button class="btn" data-act="allblocks">'+(S.showAll?"Hide the other blocks":"Pick a different block")+'</button></div>';
   if(S.showAll) h+=blocksHtml();
@@ -305,7 +312,7 @@ function homeView(){
   let h = root ? '<h1>Pocket Drills</h1><p class="sub">Your Anki decks, on your phone.</p>'
     : '<div class="row"><button class="btn small" data-act="up" aria-label="Back one level">← Back</button></div><h1 style="margin-top:10px">'+esc(n.name)+'</h1><p class="crumbs">'+esc(S.path.join(" › "))+'</p>';
   const ids=filt(n.ids);
-  if(root&&todayPlan()){ const pc=planCounts(); h+='<div class="stack"><button class="btn primary" data-act="today">Today\'s blocks · '+pc.done+' of '+pc.total+' done</button></div>'; }
+  if(root&&todayPlan()){ const pc=planCounts(); h+='<div class="stack"><button class="btn primary" data-act="today">'+(pc.late?'Tonight\'s blocks':'Today\'s blocks')+' · '+pc.done+' of '+pc.total+' done</button></div>'; }
   if(S.block){ h+='<div class="today"><b>⏱ Block running</b> <span id="clock">'+fmtClock(S.block.end-Date.now())+'</span> left <button class="btn small" data-act="endblock">Stop</button></div>'; }
   if(root){ const ts=statsFor(LOG.filter(e=>dayKey(e[0])===dayKey(Date.now()))); h+='<div class="today"><b>Today</b> '+BLOCKS.filter(b=>dayKey(b.t0)===dayKey(Date.now())).length+' blocks · '+ts.n+' cards'+(ts.n?' · '+ts.pct+'% got it · about '+ts.min+' min':'')+' <button class="btn small" data-act="copystats">'+(S.copied?'Copied ✓':'Copy stats for Claude')+'</button></div>'+(S.statsShown?'<textarea class="statsbox" readonly rows="8">'+esc(S.statsShown)+'</textarea><p class="sub">Select all and copy, then paste it to Claude.</p>':''); }
   h+='<div class="stack"><button class="btn primary" data-act="drill-here">Drill '+(root?"everything":"this deck")+' · '+ids.length+' cards</button></div>';
