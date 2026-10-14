@@ -393,6 +393,14 @@ document.addEventListener("keydown",e=>{
   else if(S.shown && (e.key==="2"||e.key==="ArrowRight")) act("got");
 });
 load(); loadSync(); render(); if(window.__PWA) setTimeout(()=>syncNow(true),3000);
-if(window.__PWA && "serviceWorker" in navigator){ try{ navigator.serviceWorker.register("sw.js"); }catch(e){} }
+if(window.__PWA && "serviceWorker" in navigator){ try{
+  /* auto-update: a new version installs in the background; when it takes over, reload on the home screen (never mid-drill) */
+  const had = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", ()=>{
+    if(!had || window.__reloading) return; window.__reloading = true;
+    const go = ()=>{ if(S.view==="home"||S.view==="today") location.reload(); else setTimeout(go, 15000); }; go();
+  });
+  navigator.serviceWorker.register("sw.js").then(r=>{ try{ r.update(); }catch(e){} });
+}catch(e){} }
 </script>
 </body></html>
