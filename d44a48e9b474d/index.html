@@ -297,7 +297,7 @@ function todayView(){
   h+='<div class="opts" style="margin-top:16px"><label for="bt"><input type="checkbox" id="bt" '+(S.blockTimer?"checked":"")+'> Run the 15-minute timer on each block</label></div>';
   h+='<div class="stack"><button class="btn" data-act="allblocks">'+(S.showAll?"Hide the other blocks":"Pick a different block")+'</button></div>';
   if(S.showAll) h+=blocksHtml();
-  h+='<p class="sub" style="margin-top:14px">Two blocks is a good day. Four is a great one. Sciences join once their decks exist.</p>';
+  h+='<p class="sub" style="margin-top:14px">Two blocks is a good day. Four is a great one.</p>';
   return h;
 }
 function say(t){ live.textContent=""; setTimeout(()=>live.textContent=t,30); }
