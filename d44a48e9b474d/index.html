@@ -232,6 +232,7 @@ const BLOCK_MS=15*60*1000;
 let blockTick=null;
 function fmtClock(ms){ ms=Math.max(0,ms); const t=Math.round(ms/1000); return String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0"); }
 function beginBlock(title){
+  return; /* blocks feature removed 27 Oct 2026 (his call, mirrored for Daisy) */
   if(!S.blockTimer || S.block) return;
   S.block={t0:Date.now(), end:Date.now()+BLOCK_MS, title:title, logStart:LOG.length};
   clearInterval(blockTick); blockTick=setInterval(tickBlock,1000);
@@ -317,7 +318,6 @@ function homeView(){
   let h = root ? '<h1>Revision Drills</h1><p class="sub">Your revision cards, on your phone.</p>'
     : '<div class="row"><button class="btn small" data-act="up" aria-label="Back one level">← Back</button></div><h1 style="margin-top:10px">'+esc(n.name)+'</h1><p class="crumbs">'+esc(S.path.join(" › "))+'</p>';
   const ids=filt(n.ids);
-  if(root&&todayPlan()){ const pc=planCounts(); h+='<div class="stack"><button class="btn primary" data-act="today">'+(pc.late?'Tonight\'s blocks':'Today\'s blocks')+' · '+pc.done+' of '+pc.total+' done</button></div>'; }
   if(S.block){ h+='<div class="today"><b>⏱ Block running</b> <span id="clock">'+fmtClock(S.block.end-Date.now())+'</span> left <button class="btn small" data-act="endblock">Stop</button></div>'; }
   /* stats row removed in this app (his call: no stats for her) */
   h+='<div class="stack"><button class="btn primary" data-act="drill-here">Drill '+(root?"everything":"this deck")+' · '+ids.length+' cards</button></div>';
@@ -334,7 +334,7 @@ function homeView(){
       return '<div class="deck"><button class="main" data-act="'+(has?"open":"drill-child")+'" data-v="'+esc(k.name)+'"><b>'+esc(k.name)+'</b><span>'+cnt+'</span>'+(has?'<i aria-hidden="true">›</i>':"")+'</button><button class="btn small go" data-act="drill-child" data-v="'+esc(k.name)+'" aria-label="Drill '+esc(k.name)+'">Drill</button></div>';
     }).join("")+'</div>';
   }
-  if(root) h+='<div class="opts"><label><input type="checkbox" id="sh" '+(S.shuffle?"checked":"")+'> Shuffle the cards</label><label><input type="checkbox" id="bt" '+(S.blockTimer?"checked":"")+'> Run a block timer (15 minutes)</label><div class="row"><span class="grow"><b>Text size</b></span><button class="btn small" data-act="fs" data-v="-1" aria-label="Smaller text">A−</button><button class="btn small" data-act="fs" data-v="1" aria-label="Bigger text">A+</button></div></div><p class="sub" style="margin-top:18px">Nothing is scheduled and nothing disappears. Drill as often as you like.</p>';
+  if(root) h+='<div class="opts"><label><input type="checkbox" id="sh" '+(S.shuffle?"checked":"")+'> Shuffle the cards</label><div class="row"><span class="grow"><b>Text size</b></span><button class="btn small" data-act="fs" data-v="-1" aria-label="Smaller text">A−</button><button class="btn small" data-act="fs" data-v="1" aria-label="Bigger text">A+</button></div></div><p class="sub" style="margin-top:18px">Nothing is scheduled and nothing disappears. Drill as often as you like.</p>';
   if(false){ h+='<details class="opts sync"'+(SYNC.token?'':' open')+'><summary><b>Auto-send my stats to Claude</b></summary><p class="sub">'+(SYNC.token?'On. ':'Off. ')+esc(SYNC.msg||"")+'</p><label for="sy-repo">Repo (owner/name)</label><input id="sy-repo" value="'+esc(SYNC.repo)+'" autocapitalize="none" autocorrect="off"><label for="sy-token">Token (stays on this phone)</label><input id="sy-token" type="password" placeholder="'+(SYNC.token?'saved, type to replace':'paste token')+'" autocapitalize="none" autocorrect="off"><div class="row" style="margin-top:8px"><button class="btn small" data-act="savesync">Save</button><button class="btn small" data-act="syncnow">Send now</button></div></details>'; }
   return h;
 }
