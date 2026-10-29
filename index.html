@@ -336,7 +336,7 @@ function homeView(){
 }
 function studyView(){
   const c=S.queue[S.i], n=S.queue.length, isCloze=c.cloze!==undefined, t=c.type||"knowledge";
-  let h='<div class="top"><div class="row"><button class="btn small" data-act="home" aria-label="Back to decks">← Decks</button><span class="grow"></span><span class="count" aria-label="Card '+(S.i+1)+' of '+n+'">'+(S.block?'<span id="clock">⏱ '+fmtClock(S.block.end-Date.now())+'</span> · ':'')+(S.i+1)+' / '+n+'</span>'+(S.block?'<button class="btn small" data-act="endblock" aria-label="Stop the block now">Stop</button>':'')+'</div><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="'+n+'" aria-valuenow="'+S.i+'"><i style="width:'+(100*S.i/n)+'%"></i></div></div>';
+  let h='<div class="top"><div class="row"><button class="btn small" data-act="home" aria-label="Back to decks">← Decks</button><button class="btn small" data-act="shuf" aria-label="Shuffle the remaining cards">🔀 Shuffle</button><span class="grow"></span><span class="count" aria-label="Card '+(S.i+1)+' of '+n+'">'+(S.block?'<span id="clock">⏱ '+fmtClock(S.block.end-Date.now())+'</span> · ':'')+(S.i+1)+' / '+n+'</span>'+(S.block?'<button class="btn small" data-act="endblock" aria-label="Stop the block now">Stop</button>':'')+'</div><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="'+n+'" aria-valuenow="'+S.i+'"><i style="width:'+(100*S.i/n)+'%"></i></div></div>';
   h+='<article class="face kc k-'+esc(t)+'"><div class="badge">'+esc(BADGE[t]||t)+'</div>';
   if(isCloze){
     h+='<div class="q">'+clozeHtml(c,S.shown)+'</div>'+pic(c.image,c.caption);
@@ -382,7 +382,7 @@ function act(a,v){
   else if(a==="savesync"){ const r=document.getElementById("sy-repo").value.trim(), t=document.getElementById("sy-token").value.trim(); if(r) SYNC.repo=r; if(t) SYNC.token=t; saveSync(); SYNC.msg="Saved."; render(); syncNow(); }
   else if(a==="syncnow") syncNow();
   else if(a==="redo") start(S.missed.map(c=>c.id),"Missed cards");
-  else if(a==="again") start(S.queue.map(c=>c.id),S.title);
+  else if(a==="again") start(S.queue.map(c=>c.id),S.title); else if(a==="shuf"){ const rest=shuffle(S.queue.slice(S.i+1)); S.queue=S.queue.slice(0,S.i+1).concat(rest); render(); }
 }
 app.addEventListener("click",e=>{ const b=e.target.closest("[data-act]"); if(b) act(b.dataset.act,b.dataset.v); });
 app.addEventListener("change",e=>{ if(e.target.id==="sh"){S.shuffle=e.target.checked; save();} if(e.target.id==="bt"){S.blockTimer=e.target.checked; if(!S.blockTimer && S.block){ clearInterval(blockTick); S.block=null; } save();} });
